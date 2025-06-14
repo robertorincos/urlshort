@@ -23,7 +23,7 @@ jobs:
         
     - name: Test with Docker Compose
       run: |
-        docker-compose up -d
+        docker compose up -d
         sleep 15  # Give more time for services to start
         
     - name: Test application health
@@ -86,11 +86,11 @@ jobs:
       if: failure()
       run: |
         echo "=== Application Logs ==="
-        docker-compose logs web
+        docker compose logs web
         echo "=== MongoDB Logs ==="
-        docker-compose logs mongodb
+        docker compose logs mongodb
         
     - name: Clean up
       run: |
-        docker-compose down
+        docker compose down
         docker system prune -f
