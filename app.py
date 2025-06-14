@@ -3,8 +3,14 @@ from datetime import datetime
 import random
 import string
 from pymongo import MongoClient
+import os
+
 app = Flask(__name__)
-client = MongoClient('localhost', 27017)
+
+MONGO_HOST = os.getenv('MONGO_HOST', 'mongodb')
+MONGO_PORT = int(os.getenv('MONGO_PORT', 27017))
+
+client = MongoClient(MONGO_HOST, MONGO_PORT)
 db = client.flask_database # creating your flask database using your mongo client 
 url_database = db.url_database # creating a collection called "todos"
 def base62_encode(num):
@@ -55,4 +61,4 @@ def home():
     return render_template('index.html')
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host='0.0.0.0', port=5000, debug=False)
