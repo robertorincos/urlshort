@@ -6,41 +6,217 @@
     <title>URL Shortener</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-        .container { max-width: 400px; margin: 60px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h2 { text-align: center; }
-        input[type="url"] { width: 100%; padding: 10px; margin: 10px 0; border-radius: 4px; border: 1px solid #ccc; }
-        button { width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        .container { max-width: 500px; margin: 60px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #555; font-weight: bold; }
+        input[type="url"] { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; }
         button:hover { background: #0056b3; }
-        .result { margin-top: 20px; text-align: center; }
-        .error { color: red; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .result.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .result.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .short-url { word-break: break-all; font-weight: bold; }
+        .stats-section { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        .stats-input { display: flex; gap: 10px; margin-bottom: 20px; }
+        .stats-input input { flex: 1; }
+        .stats-input button { width: auto; padding: 10px 20px; }
+        .stats-result { margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px; }
+        .loader { display: none; text-align: center; margin: 10px 0; }
+        .copy-btn { background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-left: 10px; }
+        .copy-btn:hover { background: #218838; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>URL Shortener</h2>
+        <h2>🔗 URL Shortener</h2>
+        
+        <!-- URL Shortening Form -->
         <form id="shorten-form">
-            <input type="url" id="url-input" placeholder="Enter your URL here" required>
-            <button type="submit">Shorten URL</button>
+            <div class="form-group">
+                <label for="url-input">Enter your URL:</label>
+                <input type="url" id="url-input" placeholder="https://example.com" required>
+            </div>
+            <button type="submit" id="shorten-btn">Shorten URL</button>
         </form>
+        
+        <div class="loader" id="loader">⏳ Processing...</div>
         <div class="result" id="result"></div>
+
+        <!-- Statistics Section -->
+        <div class="stats-section">
+            <h3>📊 URL Statistics</h3>
+            <div class="stats-input">
+                <input type="text" id="stats-input" placeholder="Enter short code (e.g., abc123)">
+                <button type="button" id="stats-btn">Get Stats</button>
+            </div>
+            <div class="stats-result" id="stats-result" style="display: none;"></div>
+        </div>
     </div>
+
     <script>
+        // Utility functions
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'block' : 'none';
+        }
+
+        function showResult(message, isError = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+        }
+
+        function showStats(stats) {
+            const statsDiv = document.getElementById('stats-result');
+            const createdAt = new Date(stats.created_at).toLocaleString();
+            const lastAccessed = stats.last_accessed === 'Never' ? 'Never' : new Date(stats.last_accessed).toLocaleString();
+            
+            statsDiv.innerHTML = `
+                <h4>Statistics for: ${stats.short_code}</h4>
+                <p><strong>Original URL:</strong> <a href="${stats.original_url}" target="_blank">${stats.original_url}</a></p>
+                <p><strong>Created:</strong> ${createdAt}</p>
+                <p><strong>Click Count:</strong> ${stats.click_count}</p>
+                <p><strong>Last Accessed:</strong> ${lastAccessed}</p>
+            `;
+            statsDiv.style.display = 'block';
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Show temporary feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#007bff';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        // URL Shortening
         document.getElementById('shorten-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const url = document.getElementById('url-input').value;
-            const resultDiv = document.getElementById('result');
-            resultDiv.textContent = '';
+            
+            const url = document.getElementById('url-input').value.trim();
+            const shortenBtn = document.getElementById('shorten-btn');
+            
+            if (!url) {
+                showResult('Please enter a valid URL', true);
+                return;
+            }
+
+            // Basic URL validation
+            try {
+                new URL(url);
+            } catch {
+                showResult('Please enter a valid URL (including http:// or https://)', true);
+                return;
+            }
+
+            shortenBtn.disabled = true;
+            showLoader(true);
+            
             try {
                 const response = await fetch('/shorten', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url })
                 });
-                if (!response.ok) throw new Error('Failed to shorten URL');
+                
                 const data = await response.json();
-                resultDiv.innerHTML = `<strong>Short URL:</strong> <a href="${data.short_url}" target="_blank">${data.short_url}</a>`;
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to shorten URL');
+                }
+                
+                showResult(`
+                    <div class="short-url">
+                        <strong>Short URL:</strong> 
+                        <a href="${data.short_url}" target="_blank">${data.short_url}</a>
+                        <button class="copy-btn" onclick="copyToClipboard('${data.short_url}')">Copy</button>
+                    </div>
+                    <p><strong>Short Code:</strong> ${data.short_code}</p>
+                    <p><small>Use the short code above to get statistics later</small></p>
+                `);
+                
+                // Clear the input
+                document.getElementById('url-input').value = '';
+                
             } catch (err) {
-                resultDiv.innerHTML = `<span class="error">${err.message}</span>`;
+                showResult(`Error: ${err.message}`, true);
+            } finally {
+                shortenBtn.disabled = false;
+                showLoader(false);
+            }
+        });
+
+        // Statistics
+        document.getElementById('stats-btn').addEventListener('submit', async function() {
+            const shortCode = document.getElementById('stats-input').value.trim();
+            const statsBtn = document.getElementById('stats-btn');
+            
+            if (!shortCode) {
+                alert('Please enter a short code');
+                return;
+            }
+
+            statsBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`/stats/${shortCode}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch statistics');
+                }
+                
+                showStats(data);
+                
+            } catch (err) {
+                const statsDiv = document.getElementById('stats-result');
+                statsDiv.className = 'stats-result error';
+                statsDiv.innerHTML = `<p>Error: ${err.message}</p>`;
+                statsDiv.style.display = 'block';
+            } finally {
+                statsBtn.disabled = false;
+            }
+        });
+
+        // Add click event for stats button
+        document.getElementById('stats-btn').addEventListener('click', async function() {
+            const shortCode = document.getElementById('stats-input').value.trim();
+            const statsBtn = document.getElementById('stats-btn');
+            
+            if (!shortCode) {
+                alert('Please enter a short code');
+                return;
+            }
+
+            statsBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`/stats/${shortCode}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch statistics');
+                }
+                
+                showStats(data);
+                
+            } catch (err) {
+                const statsDiv = document.getElementById('stats-result');
+                statsDiv.className = 'stats-result error';
+                statsDiv.innerHTML = `<p>Error: ${err.message}</p>`;
+                statsDiv.style.display = 'block';
+            } finally {
+                statsBtn.disabled = false;
             }
         });
     </script>

@@ -1,0 +1,96 @@
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image
+      run: |
+        docker build -t url-shortener:test .
+        
+    - name: Test with Docker Compose
+      run: |
+        docker-compose up -d
+        sleep 15  # Give more time for services to start
+        
+    - name: Test application health
+      run: |
+        # Test if the application is responding
+        curl -f http://localhost:5000/health || exit 1
+        
+    - name: Test URL shortening
+      run: |
+        # Test the API endpoint
+        response=$(curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"url":"https://github.com"}' \
+          http://localhost:5000/shorten)
+        echo "Response: $response"
+        
+        # Check if response contains expected fields
+        if echo "$response" | grep -q "short_url" && echo "$response" | grep -q "short_code"; then
+          echo "✅ URL shortening test passed"
+        else
+          echo "❌ URL shortening test failed"
+          exit 1
+        fi
+        
+    - name: Test URL redirection
+      run: |
+        # Extract short code from previous response
+        short_code=$(curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"url":"https://example.com"}' \
+          http://localhost:5000/shorten | grep -o '"short_code":"[^"]*"' | cut -d'"' -f4)
+        
+        # Test redirection (should return 302)
+        status_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/$short_code)
+        if [ "$status_code" -eq 302 ]; then
+          echo "✅ URL redirection test passed"
+        else
+          echo "❌ URL redirection test failed (status: $status_code)"
+          exit 1
+        fi
+        
+    - name: Test statistics endpoint
+      run: |
+        # Get a short code first
+        short_code=$(curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"url":"https://test.com"}' \
+          http://localhost:5000/shorten | grep -o '"short_code":"[^"]*"' | cut -d'"' -f4)
+        
+        # Test stats endpoint
+        stats_response=$(curl -s http://localhost:5000/stats/$short_code)
+        if echo "$stats_response" | grep -q "click_count"; then
+          echo "✅ Statistics endpoint test passed"
+        else
+          echo "❌ Statistics endpoint test failed"
+          exit 1
+        fi
+        
+    - name: Show application logs
+      if: failure()
+      run: |
+        echo "=== Application Logs ==="
+        docker-compose logs web
+        echo "=== MongoDB Logs ==="
+        docker-compose logs mongodb
+        
+    - name: Clean up
+      run: |
+        docker-compose down
+        docker system prune -f
