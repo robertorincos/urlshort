@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 400px; margin: 60px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { text-align: center; }
+        input[type="url"] { width: 100%; padding: 10px; margin: 10px 0; border-radius: 4px; border: 1px solid #ccc; }
+        button { width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; text-align: center; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>URL Shortener</h2>
+        <form id="shorten-form">
+            <input type="url" id="url-input" placeholder="Enter your URL here" required>
+            <button type="submit">Shorten URL</button>
+        </form>
+        <div class="result" id="result"></div>
+    </div>
+    <script>
+        document.getElementById('shorten-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const url = document.getElementById('url-input').value;
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = '';
+            try {
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                if (!response.ok) throw new Error('Failed to shorten URL');
+                const data = await response.json();
+                resultDiv.innerHTML = `<strong>Short URL:</strong> <a href="${data.short_url}" target="_blank">${data.short_url}</a>`;
+            } catch (err) {
+                resultDiv.innerHTML = `<span class="error">${err.message}</span>`;
+            }
+        });
+    </script>
+</body>
+</html>
